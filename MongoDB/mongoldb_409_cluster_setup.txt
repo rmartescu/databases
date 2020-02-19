@@ -1,0 +1,962 @@
+# ===============================================================================
+# Configure MongoDB 4.0.9 Replication From Scratch
+#
+# This document is describing how to setup a Mongo Db database in a clustering mode
+# In this example I used three VM build on Centos 7
+#
+# MongoDB Servers:
+#   mongodb1
+#   mongodb2
+#   mongodb3
+# ===============================================================================
+
+# ===============================================================================
+# OS: FS Server Settings
+#
+# /mongodata    : Location of MongoDB Data
+# /mongobin     : Location of MongoDB 4.0.9 binary (/mongobin/4.0.9/)
+# /mongobackup  : Location of MongoDB backups
+# ===============================================================================
+[root@mongodb1 ~]# df -h
+Filesystem                         Size  Used Avail Use% Mounted on
+/dev/mapper/VgSys-root              50G  1.4G   49G   3% /
+devtmpfs                           4.9G     0  4.9G   0% /dev
+tmpfs                              4.9G     0  4.9G   0% /dev/shm
+tmpfs                              4.9G  8.6M  4.9G   1% /run
+tmpfs                              4.9G     0  4.9G   0% /sys/fs/cgroup
+/dev/mapper/VgMongo-LvMongoData     10G   33M   10G   1% /mongodata
+/dev/mapper/VgMongo-LvMongoBackup   10G   33M   10G   1% /mongobackup
+/dev/sda1                         1014M  192M  823M  19% /boot
+/dev/mapper/VgMongo-LvMongoBin     3.0G  916M  2.1G  30% /mongobin
+tmpfs                             1000M     0 1000M   0% /run/user/0
+# ===============================================================================
+# User mongod : $HOME/.bash_profile
+# ===============================================================================
+# User specific environment and startup programs
+BASE_PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/mongod/.local/bin:/home/mongod/bin
+
+export MONGOD_HOME=/mongobin/4.0.9
+export MONGOD_DATA=/mongodata/databases
+export MONGOD_BACKUP=/mongobackup
+export MONGOD_CONF=$MONGOD_HOME/conf/mongod.conf
+export MONGOD_LOG=$MONGOD_HOME/log/mongod.log
+
+export PATH=$MONGOD_HOME/bin:$BASE_PATH
+
+alias startmongod="$MONGOD_HOME/bin/mongod --config $MONGOD_CONF"
+alias mongoroot="$MONGOD_HOME/bin/mongo -u root -p rootpwd --authenticationDatabase admin admin"
+alias mongoadmincluster="$MONGOD_HOME/bin/mongo -u adminCluster -p adminpwd --authenticationDatabase admin admin"
+# ===============================================================================
+# MongoDB instance configuration file
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# ===============================================================================
+processManagement:
+    fork: true
+    pidFilePath: /mongobin/4.0.9/run/mongod.pid
+net:
+    bindIp: 127.0.0.1,192.168.0.81
+    port: 27017
+storage:
+    dbPath: /mongodata/databases
+    indexBuildRetry: true
+    journal:
+        enabled: true
+#        commitIntervalMs:
+    directoryPerDB: true
+    syncPeriodSecs: 60
+    engine: "wiredTiger"
+    wiredTiger:
+        engineConfig:
+            cacheSizeGB: 4
+#            journalCompressor: snappy
+            directoryForIndexes: true
+systemLog:
+    destination: file
+    path: /mongobin/4.0.9/log/mongod.log
+    logAppend: true
+    logRotate: rename
+security:
+   authorization: disabled
+setParameter:
+   enableLocalhostAuthBypass: false
+   failIndexKeyTooLong: true
+   logLevel: 2
+   diagnosticDataCollectionEnabled: true
+   diagnosticDataCollectionDirectorySizeMB: 100
+   diagnosticDataCollectionFileSizeMB: 5
+   diagnosticDataCollectionPeriodMillis: 5000
+   #journalCommitInterval: 500
+   syncdelay: 60
+   #syncPeriodSecs: 60
+   wiredTigerConcurrentReadTransactions: 10
+   wiredTigerConcurrentWriteTransactions: 10
+operationProfiling:
+   mode: all
+# ===============================================================================
+# STEP 1: Start the first MongoDB Instance in single mode and generate some date
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+# -------------------------------------------------------------------------------
+# Clear directory: $MONGOD_DATA/
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ rm -rf $MONGOD_DATA/*
+[mongod@mongodb1 ~]$ > $MONGOD_LOG
+# -------------------------------------------------------------------------------
+# Start MongoDB instance
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ startmongod
+about to fork child process, waiting until server is ready for connections.
+forked process: 3578
+child process started successfully, parent exiting
+# -------------------------------------------------------------------------------
+# Configure authentication
+# Create MongoDB user: root
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ mongo
+
+> db.disableFreeMonitoring()
+> use admin
+switched to db admin
+> db.createUser(
+   {
+       user: "root", 
+       pwd: "rootpwd", 
+       roles: [ { role: "root", db: "admin" } ]
+   })
+#db.auth("root","rootpwd")
+# db.grantRolesToUser ( "root", [ { role: "__system", db: "admin" } ] )
+# -------------------------------------------------------------------------------
+# Configure authentication
+# Create MongoDB Cluster Admin user: adminCluster
+# -------------------------------------------------------------------------------
+> use admin 
+> db.createUser(
+{  user: "adminCluster",
+   pwd: "adminpwd",
+   roles: [ 
+						{ role: "clusterAdmin", db: "admin" },
+						{ role: "userAdminAnyDatabase", db: "admin" }						
+					]
+})
+#db.grantRolesToUser("adminCluster",["clusterAdmin"])
+# -------------------------------------------------------------------------------
+# Show all users
+# -------------------------------------------------------------------------------
+> db.system.users.find().pretty();
+{
+	"_id" : "admin.root",
+	"userId" : UUID("c77b6daf-0aa8-4908-a89d-5a26eb43cea0"),
+	"user" : "root",
+	"db" : "admin",
+	"credentials" : {
+		"SCRAM-SHA-1" : {
+			"iterationCount" : 10000,
+			"salt" : "BlyL+8bHp0SF2fuBnD9FMQ==",
+			"storedKey" : "KfxaAUKH+oU1jxYu5/LGX4yW5b0=",
+			"serverKey" : "Y+hlbmGuuDntUdzjxZxMBnJBtHs="
+		},
+		"SCRAM-SHA-256" : {
+			"iterationCount" : 15000,
+			"salt" : "ikDgHp8fGDNFnvJVTPyppbp2MBmteRZqGohg/g==",
+			"storedKey" : "g8du1phPiSqQLgjIVw00meyAt/k0ho9vl++i8tewP9Y=",
+			"serverKey" : "Q8FqnIctl0ggFzqVnzPVwm3JsNMkExcwZPKVwBvbnng="
+		}
+	},
+	"roles" : [
+		{
+			"role" : "root",
+			"db" : "admin"
+		}
+	]
+}
+{
+	"_id" : "admin.adminCluster",
+	"userId" : UUID("6f673478-c93d-4416-b6fc-10ed2996131b"),
+	"user" : "adminCluster",
+	"db" : "admin",
+	"credentials" : {
+		"SCRAM-SHA-1" : {
+			"iterationCount" : 10000,
+			"salt" : "tR62wgHVBor1irHyT+dx+A==",
+			"storedKey" : "ZlbVW4uuLUuPONsqRVomwcY6xJg=",
+			"serverKey" : "9bsji3HDWvtYyPRWfi5NryV79Wo="
+		},
+		"SCRAM-SHA-256" : {
+			"iterationCount" : 15000,
+			"salt" : "8OCiJ7vo0aqxuOl7Jgp1+GSqKSNM8crgalJvrA==",
+			"storedKey" : "1UQidi7ZSyQdFoI64N7KQDDYRHrZxwzQ1Jy1pimw5gM=",
+			"serverKey" : "qkvg/8byInHgGywl7lPHxiCSPnrgObqLL54aLsxxx5Y="
+		}
+	},
+	"roles" : [
+		{
+			"role" : "clusterAdmin",
+			"db" : "admin"
+		},
+		{
+			"role" : "userAdminAnyDatabase",
+			"db" : "admin"
+		}
+	]
+}
+>
+# -------------------------------------------------------------------------------
+# Shutdown MongoDB instance
+# -------------------------------------------------------------------------------
+> use admin
+> db.shutdownServer()
+server should be down...
+2019-05-05T11:56:09.031+0200 I NETWORK  [js] trying reconnect to 127.0.0.1:27017 failed
+2019-05-05T11:56:09.031+0200 I NETWORK  [js] reconnect 127.0.0.1:27017 failed failed
+
+# ===============================================================================
+# STEP 2: Configure Internal Authentication
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+# -------------------------------------------------------------------------------
+# Change mongod.conf file
+# Node: mongodb1
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# -------------------------------------------------------------------------------  
+[mongod@mongodb1 ~]$ vi $MONGOD_CONF
+security:
+	authorization: enabled
+	keyFile: /mongodata/databases/mongod.key
+
+# -------------------------------------------------------------------------------
+# Create a keyfile for the inter-cluster authentication
+# Node: mongodb1
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# -------------------------------------------------------------------------------  
+openssl rand -base64 258 > /mongodata/databases/mongod.key
+chmod 400 /mongodata/databases/mongod.key
+
+# -------------------------------------------------------------------------------
+# Start MongoDB Instance
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ startmongod
+about to fork child process, waiting until server is ready for connections.
+forked process: 3839
+child process started successfully, parent exiting
+
+# ===============================================================================
+# STEP 3: Create database "students" and generate some data
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+# -------------------------------------------------------------------------------
+# Create user "adminStudents" as database owner
+# MongoDB User: root
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ mongoroot
+> use students
+> db.createUser(
+  {
+    user: "adminStudents",
+    pwd: "adminpwd",
+    roles: 
+			[ 
+				{ role: "dbOwner", db: "students" } 
+			]
+  }
+)
+> exit
+#db.auth("adminStudents","adminpwd")
+
+# -------------------------------------------------------------------------------
+# Create database application user
+# MongoDB User: adminStudents
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ mongo -u adminStudents -p adminpwd --authenticationDatabase students students
+> db.getName()
+students
+> db.runCommand({connectionStatus : 1})
+{
+	"authInfo" : {
+		"authenticatedUsers" : [
+			{
+				"user" : "adminStudents",
+				"db" : "students"
+			}
+		],
+		"authenticatedUserRoles" : [
+			{
+				"role" : "dbOwner",
+				"db" : "students"
+			}
+		]
+	},
+	"ok" : 1
+}
+> db.createUser(
+   {
+     user: "user1",
+     pwd: "user1pwd",
+     roles: [ { role: "readWrite" , db: "students"} ]
+   }
+)
+> db.auth("user1","user1pwd")
+1
+> db.runCommand({connectionStatus : 1})
+{
+	"authInfo" : {
+		"authenticatedUsers" : [
+			{
+				"user" : "user1",
+				"db" : "students"
+			}
+		],
+		"authenticatedUserRoles" : [
+			{
+				"role" : "readWrite",
+				"db" : "students"
+			}
+		]
+	},
+	"ok" : 1
+}
+
+[mongod@mongodb1 ~]$ mongo -u user1 -p user1pwd --authenticationDatabase students students
+
+db.products.insert( { item: "card1", qty: 15 } )
+db.products.insert( { item: "card2", qty: 25 } )
+db.products.insert( { item: "box1", qty: 20 } )
+db.products.insert( { item: "box2", qty: 25 } )
+
+> db.products.find();
+{ "_id" : ObjectId("5ccd658cbc901a54ce705dfa"), "item" : "card1", "qty" : 15 }
+{ "_id" : ObjectId("5ccd658cbc901a54ce705dfb"), "item" : "card2", "qty" : 25 }
+{ "_id" : ObjectId("5ccd658cbc901a54ce705dfc"), "item" : "box1", "qty" : 20 }
+{ "_id" : ObjectId("5ccd658ebc901a54ce705dfd"), "item" : "box2", "qty" : 25 }
+# ===============================================================================
+# STEP 4: Shutdown the node
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+[mongod@mongodb1 ~]$ mongoroot
+> use admin
+> db.shutdownServer()
+# ===============================================================================
+# STEP 4: Modify mongod.conf file on all nodes for replication
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+# -------------------------------------------------------------------------------
+# Node: mongodb1
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ vi $MONGOD_CONF
+
+replication:
+  oplogSizeMB: 1024
+  replSetName: rs0
+# -------------------------------------------------------------------------------
+# Node: mongodb2 
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ vi $MONGOD_CONF
+net:
+    bindIp: 127.0.0.1,192.168.0.82
+    port: 27017
+security:
+  authorization: enabled
+  keyFile: /mongodata/databases/mongod.key
+replication:
+  oplogSizeMB: 1024
+  replSetName: rs0
+# -------------------------------------------------------------------------------
+# Node: mongodb3
+# File Location: /mongobin/4.0.9/conf/mongod.conf
+# -------------------------------------------------------------------------------
+[mongod@mongodb1 ~]$ vi $MONGOD_CONF
+net:
+  bindIp: 127.0.0.1,192.168.0.83
+	port: 27017
+security:
+  authorization: enabled
+  keyFile: /mongodata/databases/mongod.key
+replication:
+  oplogSizeMB: 1024
+  replSetName: rs0
+# ===============================================================================
+# STEP 5: Transfer the MondoDB Data to all nodes
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+[mongod@mongodb1 ~]$ ssh mongodb2 "rm -rf $MONGOD_DATA/*"
+[mongod@mongodb1 ~]$ ssh mongodb3 "rm -rf $MONGOD_DATA/*"
+[mongod@mongodb1 ~]$ scp -r $MONGOD_DATA/* mongodb2:$MONGOD_DATA/
+[mongod@mongodb1 ~]$ scp -r $MONGOD_DATA/* mongodb3:$MONGOD_DATA/
+
+# ===============================================================================
+# STEP 6: Start the all nodes
+# ===============================================================================
+[mongod@mongodb1 ~]$ startmongod
+about to fork child process, waiting until server is ready for connections.
+forked process: 3990
+child process started successfully, parent exiting
+
+[mongod@mongodb2 ~]$ startmongod
+about to fork child process, waiting until server is ready for connections.
+forked process: 3761
+child process started successfully, parent exiting
+
+[mongod@mongodb3 ~]$ startmongod
+about to fork child process, waiting until server is ready for connections.
+forked process: 3728
+child process started successfully, parent exiting
+
+# ===============================================================================
+# STEP 7: Initiate the first node
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+[mongod@mongodb1 ~]$ mongoroot
+> use admin
+> rs.initiate( {
+   _id : "rs0",
+   members: [
+      { _id: 1, host: "mongodb1:27017" }
+   ]
+})
+rs0:SECONDARY>
+rs0:PRIMARY>
+rs0:PRIMARY> rs.conf()
+{
+	"_id" : "rs0",
+	"version" : 1,
+	"protocolVersion" : NumberLong(1),
+	"writeConcernMajorityJournalDefault" : true,
+	"members" : [
+		{
+			"_id" : 1,
+			"host" : "mongodb1:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		}
+	],
+	"settings" : {
+		"chainingAllowed" : true,
+		"heartbeatIntervalMillis" : 2000,
+		"heartbeatTimeoutSecs" : 10,
+		"electionTimeoutMillis" : 10000,
+		"catchUpTimeoutMillis" : -1,
+		"catchUpTakeoverDelayMillis" : 30000,
+		"getLastErrorModes" : {
+
+		},
+		"getLastErrorDefaults" : {
+			"w" : 1,
+			"wtimeout" : 0
+		},
+		"replicaSetId" : ObjectId("5ccede120370639feb2437ed")
+	}
+}
+# ===============================================================================
+# STEP 8: Add node mongodb2
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+[mongod@mongodb1 ~]$ mongoroot
+rs0:PRIMARY> use admin
+rs0:PRIMARY> rs.add("mongodb2:27017")
+{
+	"ok" : 1,
+	"operationTime" : Timestamp(1557061374, 1),
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557061374, 1),
+		"signature" : {
+			"hash" : BinData(0,"tXZBKahFan2VVML5q0OyCc50cB0="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+}
+
+rs0:PRIMARY> rs.status()
+{
+	"set" : "rs0",
+	"date" : ISODate("2019-05-05T13:03:43.855Z"),
+	"myState" : 1,
+	"term" : NumberLong(1),
+	"syncingTo" : "",
+	"syncSourceHost" : "",
+	"syncSourceId" : -1,
+	"heartbeatIntervalMillis" : NumberLong(2000),
+	"optimes" : {
+		"lastCommittedOpTime" : {
+			"ts" : Timestamp(1557061421, 1),
+			"t" : NumberLong(1)
+		},
+		"readConcernMajorityOpTime" : {
+			"ts" : Timestamp(1557061421, 1),
+			"t" : NumberLong(1)
+		},
+		"appliedOpTime" : {
+			"ts" : Timestamp(1557061421, 1),
+			"t" : NumberLong(1)
+		},
+		"durableOpTime" : {
+			"ts" : Timestamp(1557061421, 1),
+			"t" : NumberLong(1)
+		}
+	},
+	"lastStableCheckpointTimestamp" : Timestamp(1557061374, 1),
+	"members" : [
+		{
+			"_id" : 1,
+			"name" : "mongodb1:27017",
+			"health" : 1,
+			"state" : 1,
+			"stateStr" : "PRIMARY",
+			"uptime" : 358,
+			"optime" : {
+				"ts" : Timestamp(1557061421, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDate" : ISODate("2019-05-05T13:03:41Z"),
+			"syncingTo" : "",
+			"syncSourceHost" : "",
+			"syncSourceId" : -1,
+			"infoMessage" : "",
+			"electionTime" : Timestamp(1557061139, 2),
+			"electionDate" : ISODate("2019-05-05T12:58:59Z"),
+			"configVersion" : 2,
+			"self" : true,
+			"lastHeartbeatMessage" : ""
+		},
+		{
+			"_id" : 2,
+			"name" : "mongodb2:27017",
+			"health" : 1,
+			"state" : 2,
+			"stateStr" : "SECONDARY",
+			"uptime" : 49,
+			"optime" : {
+				"ts" : Timestamp(1557061421, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDurable" : {
+				"ts" : Timestamp(1557061421, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDate" : ISODate("2019-05-05T13:03:41Z"),
+			"optimeDurableDate" : ISODate("2019-05-05T13:03:41Z"),
+			"lastHeartbeat" : ISODate("2019-05-05T13:03:42.222Z"),
+			"lastHeartbeatRecv" : ISODate("2019-05-05T13:03:42.180Z"),
+			"pingMs" : NumberLong(1),
+			"lastHeartbeatMessage" : "",
+			"syncingTo" : "mongodb1:27017",
+			"syncSourceHost" : "mongodb1:27017",
+			"syncSourceId" : 1,
+			"infoMessage" : "",
+			"configVersion" : 2
+		}
+	],
+	"ok" : 1,
+	"operationTime" : Timestamp(1557061421, 1),
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557061421, 1),
+		"signature" : {
+			"hash" : BinData(0,"qdSathMR12AVGm6fhDFZaZ8nkSE="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+}
+
+rs0:PRIMARY> rs.conf()
+{
+	"_id" : "rs0",
+	"version" : 2,
+	"protocolVersion" : NumberLong(1),
+	"writeConcernMajorityJournalDefault" : true,
+	"members" : [
+		{
+			"_id" : 1,
+			"host" : "mongodb1:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		},
+		{
+			"_id" : 2,
+			"host" : "mongodb2:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		}
+	],
+	"settings" : {
+		"chainingAllowed" : true,
+		"heartbeatIntervalMillis" : 2000,
+		"heartbeatTimeoutSecs" : 10,
+		"electionTimeoutMillis" : 10000,
+		"catchUpTimeoutMillis" : -1,
+		"catchUpTakeoverDelayMillis" : 30000,
+		"getLastErrorModes" : {
+
+		},
+		"getLastErrorDefaults" : {
+			"w" : 1,
+			"wtimeout" : 0
+		},
+		"replicaSetId" : ObjectId("5ccede120370639feb2437ed")
+	}
+}
+rs0:PRIMARY> rs.printReplicationInfo()
+configured oplog size:   1024MB
+log length start to end: 432secs (0.12hrs)
+oplog first event time:  Sun May 05 2019 14:58:59 GMT+0200 (CEST)
+oplog last event time:   Sun May 05 2019 15:06:11 GMT+0200 (CEST)
+now:                     Sun May 05 2019 15:06:12 GMT+0200 (CEST)
+rs0:PRIMARY> rs.printSlaveReplicationInfo()
+source: mongodb2:27017
+	syncedTo: Sun May 05 2019 15:06:11 GMT+0200 (CEST)
+	10 secs (0 hrs) behind the primary
+rs0:PRIMARY> rs.printSlaveReplicationInfo()
+source: mongodb2:27017
+	syncedTo: Sun May 05 2019 15:06:21 GMT+0200 (CEST)
+	0 secs (0 hrs) behind the primary
+
+NOTE: WAIT UNTIL SECONDARY mongodb2 is in sync with PRIMARY
+# ===============================================================================
+# STEP 9: Add node mongodb3
+# Node: mongdb1
+# OS User: mongod
+# ===============================================================================
+[mongod@mongodb1 ~]$ mongoroot
+rs0:PRIMARY> use admin
+rs0:PRIMARY> rs.add("mongodb3:27017")
+{
+	"ok" : 1,
+	"operationTime" : Timestamp(1557061716, 1),
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557061716, 1),
+		"signature" : {
+			"hash" : BinData(0,"llZ+rjLHDpafQq3OnShXSFqrnuY="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+}
+rs0:PRIMARY> rs.status()
+{
+	"set" : "rs0",
+	"date" : ISODate("2019-05-05T13:08:56.393Z"),
+	"myState" : 1,
+	"term" : NumberLong(1),
+	"syncingTo" : "",
+	"syncSourceHost" : "",
+	"syncSourceId" : -1,
+	"heartbeatIntervalMillis" : NumberLong(2000),
+	"optimes" : {
+		"lastCommittedOpTime" : {
+			"ts" : Timestamp(1557061731, 1),
+			"t" : NumberLong(1)
+		},
+		"readConcernMajorityOpTime" : {
+			"ts" : Timestamp(1557061731, 1),
+			"t" : NumberLong(1)
+		},
+		"appliedOpTime" : {
+			"ts" : Timestamp(1557061731, 1),
+			"t" : NumberLong(1)
+		},
+		"durableOpTime" : {
+			"ts" : Timestamp(1557061731, 1),
+			"t" : NumberLong(1)
+		}
+	},
+	"lastStableCheckpointTimestamp" : Timestamp(1557061681, 1),
+	"members" : [
+		{
+			"_id" : 1,
+			"name" : "mongodb1:27017",
+			"health" : 1,
+			"state" : 1,
+			"stateStr" : "PRIMARY",
+			"uptime" : 671,
+			"optime" : {
+				"ts" : Timestamp(1557061731, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDate" : ISODate("2019-05-05T13:08:51Z"),
+			"syncingTo" : "",
+			"syncSourceHost" : "",
+			"syncSourceId" : -1,
+			"infoMessage" : "",
+			"electionTime" : Timestamp(1557061139, 2),
+			"electionDate" : ISODate("2019-05-05T12:58:59Z"),
+			"configVersion" : 3,
+			"self" : true,
+			"lastHeartbeatMessage" : ""
+		},
+		{
+			"_id" : 2,
+			"name" : "mongodb2:27017",
+			"health" : 1,
+			"state" : 2,
+			"stateStr" : "SECONDARY",
+			"uptime" : 362,
+			"optime" : {
+				"ts" : Timestamp(1557061731, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDurable" : {
+				"ts" : Timestamp(1557061731, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDate" : ISODate("2019-05-05T13:08:51Z"),
+			"optimeDurableDate" : ISODate("2019-05-05T13:08:51Z"),
+			"lastHeartbeat" : ISODate("2019-05-05T13:08:56.284Z"),
+			"lastHeartbeatRecv" : ISODate("2019-05-05T13:08:54.428Z"),
+			"pingMs" : NumberLong(1),
+			"lastHeartbeatMessage" : "",
+			"syncingTo" : "mongodb1:27017",
+			"syncSourceHost" : "mongodb1:27017",
+			"syncSourceId" : 1,
+			"infoMessage" : "",
+			"configVersion" : 3
+		},
+		{
+			"_id" : 3,
+			"name" : "mongodb3:27017",
+			"health" : 1,
+			"state" : 2,
+			"stateStr" : "SECONDARY",
+			"uptime" : 20,
+			"optime" : {
+				"ts" : Timestamp(1557061731, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDurable" : {
+				"ts" : Timestamp(1557061731, 1),
+				"t" : NumberLong(1)
+			},
+			"optimeDate" : ISODate("2019-05-05T13:08:51Z"),
+			"optimeDurableDate" : ISODate("2019-05-05T13:08:51Z"),
+			"lastHeartbeat" : ISODate("2019-05-05T13:08:56.284Z"),
+			"lastHeartbeatRecv" : ISODate("2019-05-05T13:08:56.362Z"),
+			"pingMs" : NumberLong(1),
+			"lastHeartbeatMessage" : "",
+			"syncingTo" : "mongodb1:27017",
+			"syncSourceHost" : "mongodb1:27017",
+			"syncSourceId" : 1,
+			"infoMessage" : "",
+			"configVersion" : 3
+		}
+	],
+	"ok" : 1,
+	"operationTime" : Timestamp(1557061731, 1),
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557061731, 1),
+		"signature" : {
+			"hash" : BinData(0,"nDKKutC4zvZ4YFJyMwH/MNFWmuY="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+}
+
+rs0:PRIMARY> rs.conf()
+{
+	"_id" : "rs0",
+	"version" : 3,
+	"protocolVersion" : NumberLong(1),
+	"writeConcernMajorityJournalDefault" : true,
+	"members" : [
+		{
+			"_id" : 1,
+			"host" : "mongodb1:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		},
+		{
+			"_id" : 2,
+			"host" : "mongodb2:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		},
+		{
+			"_id" : 3,
+			"host" : "mongodb3:27017",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		}
+	],
+	"settings" : {
+		"chainingAllowed" : true,
+		"heartbeatIntervalMillis" : 2000,
+		"heartbeatTimeoutSecs" : 10,
+		"electionTimeoutMillis" : 10000,
+		"catchUpTimeoutMillis" : -1,
+		"catchUpTakeoverDelayMillis" : 30000,
+		"getLastErrorModes" : {
+
+		},
+		"getLastErrorDefaults" : {
+			"w" : 1,
+			"wtimeout" : 0
+		},
+		"replicaSetId" : ObjectId("5ccede120370639feb2437ed")
+	}
+}
+
+rs0:PRIMARY> rs.isMaster()
+{
+	"hosts" : [
+		"mongodb1:27017",
+		"mongodb2:27017",
+		"mongodb3:27017"
+	],
+	"setName" : "rs0",
+	"setVersion" : 3,
+	"ismaster" : true,
+	"secondary" : false,
+	"primary" : "mongodb1:27017",
+	"me" : "mongodb1:27017",
+	"electionId" : ObjectId("7fffffff0000000000000001"),
+	"lastWrite" : {
+		"opTime" : {
+			"ts" : Timestamp(1557063001, 1),
+			"t" : NumberLong(1)
+		},
+		"lastWriteDate" : ISODate("2019-05-05T13:30:01Z"),
+		"majorityOpTime" : {
+			"ts" : Timestamp(1557063001, 1),
+			"t" : NumberLong(1)
+		},
+		"majorityWriteDate" : ISODate("2019-05-05T13:30:01Z")
+	},
+	"maxBsonObjectSize" : 16777216,
+	"maxMessageSizeBytes" : 48000000,
+	"maxWriteBatchSize" : 100000,
+	"localTime" : ISODate("2019-05-05T13:30:05.240Z"),
+	"logicalSessionTimeoutMinutes" : 30,
+	"minWireVersion" : 0,
+	"maxWireVersion" : 7,
+	"readOnly" : false,
+	"ok" : 1,
+	"operationTime" : Timestamp(1557063001, 1),
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557063001, 1),
+		"signature" : {
+			"hash" : BinData(0,"ZdS+ZoOz9janhN2muXJomTaQcbw="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+}
+rs0:PRIMARY>
+
+rs0:PRIMARY> rs.printReplicationInfo()
+configured oplog size:   1024MB
+log length start to end: 652secs (0.18hrs)
+oplog first event time:  Sun May 05 2019 14:58:59 GMT+0200 (CEST)
+oplog last event time:   Sun May 05 2019 15:09:51 GMT+0200 (CEST)
+now:                     Sun May 05 2019 15:10:00 GMT+0200 (CEST)
+
+rs0:PRIMARY> rs.printSlaveReplicationInfo()
+source: mongodb2:27017
+	syncedTo: Sun May 05 2019 15:10:11 GMT+0200 (CEST)
+	0 secs (0 hrs) behind the primary
+source: mongodb3:27017
+	syncedTo: Sun May 05 2019 15:10:11 GMT+0200 (CEST)
+	0 secs (0 hrs) behind the primary
+# ===============================================================================
+# Step 10:Enable queries on Slaves
+# Node: mongdb1
+# OS User: mongod
+#
+# rs.slaveOk()
+# or
+# db.getMongo().setSlaveOk()
+# ===============================================================================
+rs0:PRIMARY> exit
+[mongod@mongodb1 ~]$ mongo -u user1 -p user1pwd --authenticationDatabase students mongodb2/students
+MongoDB shell version v4.0.9
+connecting to: mongodb://mongodb2:27017/students?authSource=students&gssapiServiceName=mongodb
+Implicit session: session { "id" : UUID("04270ced-603b-4cf8-95db-34ec57116e42") }
+MongoDB server version: 4.0.9
+rs0:SECONDARY> show collections
+2019-05-05T15:18:20.978+0200 E QUERY    [js] Error: listCollections failed: {
+	"operationTime" : Timestamp(1557062291, 1),
+	"ok" : 0,
+	"errmsg" : "not master and slaveOk=false",
+	"code" : 13435,
+	"codeName" : "NotMasterNoSlaveOk",
+	"$clusterTime" : {
+		"clusterTime" : Timestamp(1557062291, 1),
+		"signature" : {
+			"hash" : BinData(0,"0WeU5sKpLn7IS4T3DryKGmVicQQ="),
+			"keyId" : NumberLong("6687526678467444737")
+		}
+	}
+} :
+_getErrorWithCode@src/mongo/shell/utils.js:25:13
+DB.prototype._getCollectionInfosCommand@src/mongo/shell/db.js:943:1
+DB.prototype.getCollectionInfos@src/mongo/shell/db.js:993:20
+DB.prototype.getCollectionNames@src/mongo/shell/db.js:1031:16
+shellHelper.show@src/mongo/shell/utils.js:869:9
+shellHelper@src/mongo/shell/utils.js:766:15
+@(shellhelp2):1:1
+rs0:SECONDARY> rs.slaveOk()
+rs0:SECONDARY> show collections
+products
+rs0:SECONDARY> db.products.find()
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a6"), "item" : "card1", "qty" : 15 }
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a7"), "item" : "card2", "qty" : 25 }
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a8"), "item" : "box1", "qty" : 20 }
+{ "_id" : ObjectId("5ccedcb3cf8adaa5044fe2a9"), "item" : "box2", "qty" : 25 }
+rs0:SECONDARY> exit
+
+[mongod@mongodb1 ~]$ mongo -u user1 -p user1pwd --authenticationDatabase students mongodb2/students
+MongoDB shell version v4.0.9
+connecting to: mongodb://mongodb2:27017/students?authSource=students&gssapiServiceName=mongodb
+Implicit session: session { "id" : UUID("0670c226-efc2-45cb-aabb-218cb87100db") }
+MongoDB server version: 4.0.9
+rs0:SECONDARY> db.getMongo().setSlaveOk()
+rs0:SECONDARY> db.products.find()
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a6"), "item" : "card1", "qty" : 15 }
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a7"), "item" : "card2", "qty" : 25 }
+{ "_id" : ObjectId("5ccedcb2cf8adaa5044fe2a8"), "item" : "box1", "qty" : 20 }
+{ "_id" : ObjectId("5ccedcb3cf8adaa5044fe2a9"), "item" : "box2", "qty" : 25 }
+
