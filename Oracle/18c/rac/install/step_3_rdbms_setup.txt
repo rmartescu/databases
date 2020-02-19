@@ -1,0 +1,70 @@
+# ----------------------------------------------------------------------------
+# Unpack DB-18.3-x86-64.zip to $ORACLE_HOME
+# Target: first node
+# User: oracle
+# ----------------------------------------------------------------------------
+
+[oracle@ora18rac1 ~:VMSCDB1]$ echo $ORACLE_HOME
+/u01/app/oracle/product/18.0.0/db
+
+[oracle@ora18rac1 ~:VMSCDB1]$ unzip -q /download/DB-18.3-x86-64.zip -d $ORACLE_HOME
+
+# ----------------------------------------------------------------------------
+# Check pre-requirements for RDBMS install
+#
+# User: grid
+# ----------------------------------------------------------------------------
+
+su - grid
+
+cluvfy stage -pre dbinst -n ora18rac1,ora18rac2 -r 18 -verbose
+# ----------------------------------------------------------------------------
+# Install RAC RDBMS
+# Target: first node
+# User: oracle
+# ----------------------------------------------------------------------------
+[oracle@ora18rac1 ~:VMSCDB1]$ cd $ORACLE_HOME
+oracle@ora18rac1 db:VMSCDB1]$ ./runInstaller
+-Setup Software Only
+- Oracle Real Application Clusters database installation
+- Select all nodes
+- Enterprise Edition
+- Oracle base: /u01/app/oracle
+- SYS privileges: let as it is
+
+
+[root@ora18rac1 ~]# /u01/app/oracle/product/18.0.0/db/root.sh
+Performing root user operation.
+
+The following environment variables are set as:
+    ORACLE_OWNER= oracle
+    ORACLE_HOME=  /u01/app/oracle/product/18.0.0/db
+
+Enter the full pathname of the local bin directory: [/usr/local/bin]:
+The contents of "dbhome" have not changed. No need to overwrite.
+The contents of "oraenv" have not changed. No need to overwrite.
+The contents of "coraenv" have not changed. No need to overwrite.
+
+Entries will be added to the /etc/oratab file as needed by
+Database Configuration Assistant when a database is created
+Finished running generic part of root script.
+Now product-specific root actions will be performed.
+
+
+[root@ora18rac2 ~]# /u01/app/oracle/product/18.0.0/db/root.sh
+Performing root user operation.
+
+The following environment variables are set as:
+    ORACLE_OWNER= oracle
+    ORACLE_HOME=  /u01/app/oracle/product/18.0.0/db
+
+Enter the full pathname of the local bin directory: [/usr/local/bin]:
+The contents of "dbhome" have not changed. No need to overwrite.
+The contents of "oraenv" have not changed. No need to overwrite.
+The contents of "coraenv" have not changed. No need to overwrite.
+
+Entries will be added to the /etc/oratab file as needed by
+Database Configuration Assistant when a database is created
+Finished running generic part of root script.
+Now product-specific root actions will be performed.
+[root@ora18rac2 ~]#
