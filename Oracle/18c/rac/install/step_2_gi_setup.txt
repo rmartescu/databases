@@ -1,0 +1,554 @@
+# ----------------------------------------------------------------------------
+# Unpack GI-18.3-x86-64.zip to $ORACLE_HOME
+# Target: first node
+# User: grid
+# ----------------------------------------------------------------------------
+su - grid
+[grid@ora18rac1 ~:+ASM1]$ echo $ORACLE_HOME
+/u01/app/18.0.0/grid
+
+[grid@ora18rac1 ~:+ASM1]$ unzip /download/GI-18.3-x86-64.zip -d $ORACLE_HOME
+
+# ----------------------------------------------------------------------------
+# Install cvuqdisk rpm
+#
+# Target: all nodes
+# User: root
+# ----------------------------------------------------------------------------
+su - 
+export CVUQDISK_GRP=oinstall
+rpm -ivh /u01/app/18.0.0/grid/cv/rpm/cvuqdisk-1.0.10-1.rpm
+
+scp /u01/app/18.0.0/grid/cv/rpm/cvuqdisk-1.0.10-1.rpm ora18rac2:/download/
+
+# ----------------------------------------------------------------------------
+# Configure AFD disk string
+#
+# Target: all nodes
+# User: root
+# ----------------------------------------------------------------------------
+su - 
+[root@ora18rac1 ~]# cat /etc/oracleafd.conf
+afd_diskstring='/dev/oracleasm/*'
+
+scp /etc/oracleafd.conf ora18rac2:/etc/oracleafd.conf
+# ----------------------------------------------------------------------------
+# Use Oracle ASM command line tool (ASMCMD) to provision 
+# the disk devices for use with Oracle ASM Filter Driver
+#
+# Target: first node
+# User: grid
+# ----------------------------------------------------------------------------
+su - grid
+$ORACLE_HOME/bin/asmcmd afd_label VOLOCR01 /dev/oracleasm/volocr01 --init
+$ORACLE_HOME/bin/asmcmd afd_label volgimr01 /dev/oracleasm/volgimr01 --init
+$ORACLE_HOME/bin/asmcmd afd_label VOLDATA01 /dev/oracleasm/voldata01 --init
+$ORACLE_HOME/bin/asmcmd afd_label VOLLOG01 /dev/oracleasm/vollog01 --init
+$ORACLE_HOME/bin/asmcmd afd_label VOLACFS01 /dev/oracleasm/volacfs01 --init
+
+[grid@ora18rac1 ~:+ASM1]$ $ORACLE_HOME/bin/asmcmd afd_lslbl
+--------------------------------------------------------------------------------
+Label                     Duplicate  Path
+================================================================================
+VOLACFS01                             /dev/oracleasm/volacfs01
+VOLDATA01                             /dev/oracleasm/voldata01
+VOLGIMR01                             /dev/oracleasm/volgimr01
+VOLLOG01                              /dev/oracleasm/vollog01
+VOLOCR01                              /dev/oracleasm/volocr01
+
+# ----------------------------------------------------------------------------
+# Check/validate configuration 
+#
+# Target: first node
+# User: grid
+# ----------------------------------------------------------------------------
+$ORACLE_HOME/runcluvfy.sh stage -pre crsinst -n ora18rac1,ora18rac2 -verbose
+
+# ----------------------------------------------------------------------------
+# Install 
+#
+# Target: first node
+# User: grid
+# ----------------------------------------------------------------------------
+[grid@ora18rac1 ~:+ASM1]$ $ORACLE_HOME/gridSetup.sh
+- Configure Oracle Grid Infrastructure for a New Cluster
+- Configure an Oracle Standalone Cluster
+- Create Local Scan
+  Cluster Name: ora18rac
+  SCAN Name: ora18rac-scan
+  SCAN Port: 1521
+- Provide the list of nodes to be managed by Oracle Grid Infrastructure 
+  with Public Hostname and Virtual Hostname:
+  
+  ora18rac1 : HUB : ora18rac1-vip
+  ora18rac2 : HUB : ora18rac2-vip
+  
+- Private interfaces are used by Oracle Grid Infrastructure for internode traffic:
+
+  enp0s3  : 192.168.0.0   : Public
+  enp0s8  : 192.168.56.0  : ASM & Private
+ 
+- Configure ASM using block devices
+- Do you want to create a separate Automatic Storage Management (ASM) disk group
+  for the Grid Infrastructure Management Repository (GIMR) data?
+   
+  Yes
+
+- OCR and Voting disk
+  Disk Group Name: VOLOCR01
+  Redundancy: External
+  Allocation Unit Size: 4 MB
+  Change Discovery Path: /dev/oracleasm/*
+  Select Disks: /dev/oracleasm/volocr01
+ 
+-  Select diskgroup for GIMR data
+  Disk Group Name: VOLGIMR1
+  Redundancy: External
+  Allocation Unit Size: 4 MB
+  Select Disks: /dev/oracleasm/volgimr01
+  
+- Set password for all Oracle accounts
+- Do not set IPMI
+- Do net select EM
+- OS system group, let by default
+  OSASM Group: asmadmin
+  OSDBA for ASM Group: asmdba
+  OSOPER for ASM Group:  asmoper
+
+- Oracle base: /u01/app/grid
+- Inventory Directory: /u01/app/oraInventory
+- Do not select Automatically run configuration scripts
+- Save Response File
+- Install
+  - run scripts as root:
+    /u01/app/oraInventory/orainstRoot.sh
+    /u01/app/18.0.0/grid/root.sh
+    # ----------------------------------------------------------------------------
+    [root@ora18rac1 ~]# /u01/app/oraInventory/orainstRoot.sh
+    Changing permissions of /u01/app/oraInventory.
+    Adding read,write permissions for group.
+    Removing read,write,execute permissions for world.
+
+    Changing groupname of /u01/app/oraInventory to oinstall.
+    The execution of the script is complete.
+    # ----------------------------------------------------------------------------
+    [root@ora18rac2 ~]# /u01/app/oraInventory/orainstRoot.sh
+    Changing permissions of /u01/app/oraInventory.
+    Adding read,write permissions for group.
+    Removing read,write,execute permissions for world.
+
+    Changing groupname of /u01/app/oraInventory to oinstall.
+    The execution of the script is complete.
+    # ----------------------------------------------------------------------------
+    [root@ora18rac1 ~]# /u01/app/18.0.0/grid/root.sh
+    Performing root user operation.
+
+    The following environment variables are set as:
+        ORACLE_OWNER= grid
+        ORACLE_HOME=  /u01/app/18.0.0/grid
+
+    Enter the full pathname of the local bin directory: [/usr/local/bin]:
+       Copying dbhome to /usr/local/bin ...
+       Copying oraenv to /usr/local/bin ...
+       Copying coraenv to /usr/local/bin ...
+
+
+    Creating /etc/oratab file...
+    Entries will be added to the /etc/oratab file as needed by
+    Database Configuration Assistant when a database is created
+    Finished running generic part of root script.
+    Now product-specific root actions will be performed.
+    Relinking oracle with rac_on option
+    Using configuration parameter file: /u01/app/18.0.0/grid/crs/install/crsconfig_params
+    The log of current session can be found at:
+      /u01/app/grid/crsdata/ora18rac1/crsconfig/rootcrs_ora18rac1_2020-01-05_07-50-23PM.log
+    2020/01/05 19:50:45 CLSRSC-594: Executing installation step 1 of 20: 'SetupTFA'.
+    2020/01/05 19:50:45 CLSRSC-4001: Installing Oracle Trace File Analyzer (TFA) Collector.
+    2020/01/05 19:51:24 CLSRSC-4002: Successfully installed Oracle Trace File Analyzer (TFA) Collector.
+    2020/01/05 19:51:24 CLSRSC-594: Executing installation step 2 of 20: 'ValidateEnv'.
+    2020/01/05 19:51:24 CLSRSC-594: Executing installation step 3 of 20: 'CheckFirstNode'.
+    2020/01/05 19:51:27 CLSRSC-594: Executing installation step 4 of 20: 'GenSiteGUIDs'.
+    2020/01/05 19:51:34 CLSRSC-594: Executing installation step 5 of 20: 'SaveParamFile'.
+    2020/01/05 19:51:53 CLSRSC-594: Executing installation step 6 of 20: 'SetupOSD'.
+    2020/01/05 19:51:53 CLSRSC-594: Executing installation step 7 of 20: 'CheckCRSConfig'.
+    2020/01/05 19:51:53 CLSRSC-594: Executing installation step 8 of 20: 'SetupLocalGPNP'.
+    2020/01/05 19:52:53 CLSRSC-594: Executing installation step 9 of 20: 'CreateRootCert'.
+    2020/01/05 19:53:05 CLSRSC-594: Executing installation step 10 of 20: 'ConfigOLR'.
+    2020/01/05 19:53:31 CLSRSC-594: Executing installation step 11 of 20: 'ConfigCHMOS'.
+    2020/01/05 19:53:31 CLSRSC-594: Executing installation step 12 of 20: 'CreateOHASD'.
+    2020/01/05 19:53:48 CLSRSC-594: Executing installation step 13 of 20: 'ConfigOHASD'.
+    2020/01/05 19:53:49 CLSRSC-330: Adding Clusterware entries to file 'oracle-ohasd.service'
+    2020/01/05 19:54:25 CLSRSC-594: Executing installation step 14 of 20: 'InstallAFD'.
+    2020/01/05 19:54:43 CLSRSC-594: Executing installation step 15 of 20: 'InstallACFS'.
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac1'
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac1' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    CRS-4123: Oracle High Availability Services has been started.
+    2020/01/05 19:55:07 CLSRSC-594: Executing installation step 16 of 20: 'InstallKA'.
+    2020/01/05 19:55:25 CLSRSC-594: Executing installation step 17 of 20: 'InitConfig'.
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac1'
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac1' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    CRS-4123: Oracle High Availability Services has been started.
+    CRS-2672: Attempting to start 'ora.evmd' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.mdnsd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.mdnsd' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.evmd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.gpnpd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.gpnpd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.cssdmonitor' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.gipcd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.cssdmonitor' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.gipcd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.cssd' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.diskmon' on 'ora18rac1'
+    CRS-2676: Start of 'ora.diskmon' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.cssd' on 'ora18rac1' succeeded
+
+    [INFO] [DBT-30001] Disk groups created successfully. Check /u01/app/grid/cfgtoollogs/asmca/asmca-200105PM075608.log for details.
+
+
+    2020/01/05 19:56:56 CLSRSC-482: Running command: '/u01/app/18.0.0/grid/bin/ocrconfig -upgrade grid oinstall'
+    CRS-2672: Attempting to start 'ora.crf' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.storage' on 'ora18rac1'
+    CRS-2676: Start of 'ora.storage' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.crf' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.crsd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.crsd' on 'ora18rac1' succeeded
+    CRS-4256: Updating the profile
+    Successful addition of voting disk ffe4647d9b804f89bfbdba002263b2f9.
+    Successfully replaced voting disk group with +VOLOCR1.
+    CRS-4256: Updating the profile
+    CRS-4266: Voting file(s) successfully replaced
+    ##  STATE    File Universal Id                File Name Disk group
+    --  -----    -----------------                --------- ---------
+     1. ONLINE   ffe4647d9b804f89bfbdba002263b2f9 (/dev/oracleasm/volocr01) [VOLOCR1]
+    Located 1 voting disk(s).
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac1'
+    CRS-2673: Attempting to stop 'ora.crsd' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.crsd' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.storage' on 'ora18rac1'
+    CRS-2673: Attempting to stop 'ora.crf' on 'ora18rac1'
+    CRS-2673: Attempting to stop 'ora.mdnsd' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.crf' on 'ora18rac1' succeeded
+    CRS-2677: Stop of 'ora.storage' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.asm' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.mdnsd' on 'ora18rac1' succeeded
+    CRS-2677: Stop of 'ora.asm' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.cluster_interconnect.haip' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.cluster_interconnect.haip' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.ctssd' on 'ora18rac1'
+    CRS-2673: Attempting to stop 'ora.evmd' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.evmd' on 'ora18rac1' succeeded
+    CRS-2677: Stop of 'ora.ctssd' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.cssd' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.cssd' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.gipcd' on 'ora18rac1'
+    CRS-2673: Attempting to stop 'ora.gpnpd' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.gipcd' on 'ora18rac1' succeeded
+    CRS-2677: Stop of 'ora.gpnpd' on 'ora18rac1' succeeded
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac1' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    2020/01/05 19:59:40 CLSRSC-594: Executing installation step 18 of 20: 'StartCluster'.
+    CRS-4123: Starting Oracle High Availability Services-managed resources
+    CRS-2672: Attempting to start 'ora.mdnsd' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.evmd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.evmd' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.mdnsd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.gpnpd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.gpnpd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.gipcd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.gipcd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.crf' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.cssdmonitor' on 'ora18rac1'
+    CRS-2676: Start of 'ora.cssdmonitor' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.cssd' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.diskmon' on 'ora18rac1'
+    CRS-2676: Start of 'ora.diskmon' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.crf' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.cssd' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.cluster_interconnect.haip' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.ctssd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.ctssd' on 'ora18rac1' succeeded
+    CRS-2676: Start of 'ora.cluster_interconnect.haip' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.asm' on 'ora18rac1'
+    CRS-2676: Start of 'ora.asm' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.storage' on 'ora18rac1'
+    CRS-2676: Start of 'ora.storage' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.crsd' on 'ora18rac1'
+    CRS-2676: Start of 'ora.crsd' on 'ora18rac1' succeeded
+    CRS-6023: Starting Oracle Cluster Ready Services-managed resources
+    CRS-6017: Processing resource auto-start for servers: ora18rac1
+    CRS-6016: Resource auto-start has completed for server ora18rac1
+    CRS-6024: Completed start of Oracle Cluster Ready Services-managed resources
+    CRS-4123: Oracle High Availability Services has been started.
+    2020/01/05 20:01:49 CLSRSC-343: Successfully started Oracle Clusterware stack
+    2020/01/05 20:01:49 CLSRSC-594: Executing installation step 19 of 20: 'ConfigNode'.
+    CRS-2672: Attempting to start 'ora.ASMNET1LSNR_ASM.lsnr' on 'ora18rac1'
+    CRS-2676: Start of 'ora.ASMNET1LSNR_ASM.lsnr' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.asm' on 'ora18rac1'
+    CRS-2676: Start of 'ora.asm' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.VOLOCR1.dg' on 'ora18rac1'
+    CRS-2676: Start of 'ora.VOLOCR1.dg' on 'ora18rac1' succeeded
+    2020/01/05 20:04:21 CLSRSC-594: Executing installation step 20 of 20: 'PostConfig'.
+
+    [INFO] [DBT-30001] Disk groups created successfully. Check /u01/app/grid/cfgtoollogs/asmca/asmca-200105PM080425.log for details.
+
+
+    2020/01/05 20:05:15 CLSRSC-325: Configure Oracle Grid Infrastructure for a Cluster ... succeeded
+    [root@ora18rac1 ~]#
+    # ----------------------------------------------------------------------------
+    [root@ora18rac2 ~]# /u01/app/18.0.0/grid/root.sh
+    Performing root user operation.
+
+    The following environment variables are set as:
+        ORACLE_OWNER= grid
+        ORACLE_HOME=  /u01/app/18.0.0/grid
+
+    Enter the full pathname of the local bin directory: [/usr/local/bin]:
+       Copying dbhome to /usr/local/bin ...
+       Copying oraenv to /usr/local/bin ...
+       Copying coraenv to /usr/local/bin ...
+
+
+    Creating /etc/oratab file...
+    Entries will be added to the /etc/oratab file as needed by
+    Database Configuration Assistant when a database is created
+    Finished running generic part of root script.
+    Now product-specific root actions will be performed.
+    Relinking oracle with rac_on option
+    Using configuration parameter file: /u01/app/18.0.0/grid/crs/install/crsconfig_params
+    The log of current session can be found at:
+      /u01/app/grid/crsdata/ora18rac2/crsconfig/rootcrs_ora18rac2_2020-01-05_08-08-00PM.log
+    2020/01/05 20:08:05 CLSRSC-594: Executing installation step 1 of 20: 'SetupTFA'.
+    2020/01/05 20:08:05 CLSRSC-4001: Installing Oracle Trace File Analyzer (TFA) Collector.
+    2020/01/05 20:08:49 CLSRSC-4002: Successfully installed Oracle Trace File Analyzer (TFA) Collector.
+    2020/01/05 20:08:49 CLSRSC-594: Executing installation step 2 of 20: 'ValidateEnv'.
+    2020/01/05 20:08:49 CLSRSC-594: Executing installation step 3 of 20: 'CheckFirstNode'.
+    2020/01/05 20:08:51 CLSRSC-594: Executing installation step 4 of 20: 'GenSiteGUIDs'.
+    2020/01/05 20:08:51 CLSRSC-594: Executing installation step 5 of 20: 'SaveParamFile'.
+    2020/01/05 20:08:55 CLSRSC-594: Executing installation step 6 of 20: 'SetupOSD'.
+    2020/01/05 20:08:55 CLSRSC-594: Executing installation step 7 of 20: 'CheckCRSConfig'.
+    2020/01/05 20:08:56 CLSRSC-594: Executing installation step 8 of 20: 'SetupLocalGPNP'.
+    2020/01/05 20:08:57 CLSRSC-594: Executing installation step 9 of 20: 'CreateRootCert'.
+    2020/01/05 20:08:58 CLSRSC-594: Executing installation step 10 of 20: 'ConfigOLR'.
+    2020/01/05 20:09:02 CLSRSC-594: Executing installation step 11 of 20: 'ConfigCHMOS'.
+    2020/01/05 20:09:02 CLSRSC-594: Executing installation step 12 of 20: 'CreateOHASD'.
+    2020/01/05 20:09:04 CLSRSC-594: Executing installation step 13 of 20: 'ConfigOHASD'.
+    2020/01/05 20:09:04 CLSRSC-330: Adding Clusterware entries to file 'oracle-ohasd.service'
+    2020/01/05 20:09:27 CLSRSC-594: Executing installation step 14 of 20: 'InstallAFD'.
+    2020/01/05 20:09:30 CLSRSC-594: Executing installation step 15 of 20: 'InstallACFS'.
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac2'
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac2' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    CRS-4123: Oracle High Availability Services has been started.
+    2020/01/05 20:09:50 CLSRSC-594: Executing installation step 16 of 20: 'InstallKA'.
+    2020/01/05 20:09:52 CLSRSC-594: Executing installation step 17 of 20: 'InitConfig'.
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac2'
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac2' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    CRS-4123: Oracle High Availability Services has been started.
+    CRS-2791: Starting shutdown of Oracle High Availability Services-managed resources on 'ora18rac2'
+    CRS-2793: Shutdown of Oracle High Availability Services-managed resources on 'ora18rac2' has completed
+    CRS-4133: Oracle High Availability Services has been stopped.
+    2020/01/05 20:10:04 CLSRSC-594: Executing installation step 18 of 20: 'StartCluster'.
+    CRS-4123: Starting Oracle High Availability Services-managed resources
+    CRS-2672: Attempting to start 'ora.evmd' on 'ora18rac2'
+    CRS-2672: Attempting to start 'ora.mdnsd' on 'ora18rac2'
+    CRS-2676: Start of 'ora.mdnsd' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.evmd' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.gpnpd' on 'ora18rac2'
+    CRS-2676: Start of 'ora.gpnpd' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.gipcd' on 'ora18rac2'
+    CRS-2676: Start of 'ora.gipcd' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.crf' on 'ora18rac2'
+    CRS-2672: Attempting to start 'ora.cssdmonitor' on 'ora18rac2'
+    CRS-2676: Start of 'ora.cssdmonitor' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.cssd' on 'ora18rac2'
+    CRS-2672: Attempting to start 'ora.diskmon' on 'ora18rac2'
+    CRS-2676: Start of 'ora.diskmon' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.crf' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.cssd' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.cluster_interconnect.haip' on 'ora18rac2'
+    CRS-2672: Attempting to start 'ora.ctssd' on 'ora18rac2'
+    CRS-2676: Start of 'ora.ctssd' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.cluster_interconnect.haip' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.asm' on 'ora18rac2'
+    CRS-2676: Start of 'ora.asm' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.storage' on 'ora18rac2'
+    CRS-2676: Start of 'ora.storage' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.crsd' on 'ora18rac2'
+    CRS-2676: Start of 'ora.crsd' on 'ora18rac2' succeeded
+    CRS-6017: Processing resource auto-start for servers: ora18rac2
+    CRS-2673: Attempting to stop 'ora.LISTENER_SCAN1.lsnr' on 'ora18rac1'
+    CRS-2672: Attempting to start 'ora.ASMNET1LSNR_ASM.lsnr' on 'ora18rac2'
+    CRS-2672: Attempting to start 'ora.ons' on 'ora18rac2'
+    CRS-2677: Stop of 'ora.LISTENER_SCAN1.lsnr' on 'ora18rac1' succeeded
+    CRS-2673: Attempting to stop 'ora.scan1.vip' on 'ora18rac1'
+    CRS-2677: Stop of 'ora.scan1.vip' on 'ora18rac1' succeeded
+    CRS-2672: Attempting to start 'ora.scan1.vip' on 'ora18rac2'
+    CRS-2676: Start of 'ora.ASMNET1LSNR_ASM.lsnr' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.asm' on 'ora18rac2'
+    CRS-2676: Start of 'ora.scan1.vip' on 'ora18rac2' succeeded
+    CRS-2672: Attempting to start 'ora.LISTENER_SCAN1.lsnr' on 'ora18rac2'
+    CRS-2676: Start of 'ora.LISTENER_SCAN1.lsnr' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.ons' on 'ora18rac2' succeeded
+    CRS-2676: Start of 'ora.asm' on 'ora18rac2' succeeded
+    CRS-6016: Resource auto-start has completed for server ora18rac2
+    CRS-6024: Completed start of Oracle Cluster Ready Services-managed resources
+    CRS-4123: Oracle High Availability Services has been started.
+    2020/01/05 20:11:42 CLSRSC-343: Successfully started Oracle Clusterware stack
+    2020/01/05 20:11:42 CLSRSC-594: Executing installation step 19 of 20: 'ConfigNode'.
+    2020/01/05 20:12:05 CLSRSC-594: Executing installation step 20 of 20: 'PostConfig'.
+    2020/01/05 20:12:14 CLSRSC-325: Configure Oracle Grid Infrastructure for a Cluster ... succeeded
+    [root@ora18rac2 ~]#
+
+# ----------------------------------------------------------------------------
+[grid@ora18rac1 ~:+ASM1]$ crsctl status res -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Local Resources
+--------------------------------------------------------------------------------
+ora.ASMNET1LSNR_ASM.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLGIMR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLOCR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.chad
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.net1.network
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.ons
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.LISTENER_SCAN1.lsnr
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER_SCAN2.lsnr
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.LISTENER_SCAN3.lsnr
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.MGMTLSNR
+      1        ONLINE  ONLINE       ora18rac1                169.254.14.65 192.16
+                                                             8.56.41,STABLE
+ora.asm
+      1        ONLINE  ONLINE       ora18rac1                Started,STABLE
+      2        ONLINE  ONLINE       ora18rac2                Started,STABLE
+      3        OFFLINE OFFLINE                               STABLE
+ora.cvu
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.mgmtdb
+      1        ONLINE  ONLINE       ora18rac1                Open,STABLE
+ora.ora18rac1.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.ora18rac2.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.qosmserver
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.scan1.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.scan2.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.scan3.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+--------------------------------------------------------------------------------
+[grid@ora18rac1 ~:+ASM1]$
+
+[grid@ora18rac2 ~:+ASM2]$ crsctl status res -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Local Resources
+--------------------------------------------------------------------------------
+ora.ASMNET1LSNR_ASM.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLGIMR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLOCR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.chad
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.net1.network
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.ons
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.LISTENER_SCAN1.lsnr
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER_SCAN2.lsnr
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.LISTENER_SCAN3.lsnr
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.MGMTLSNR
+      1        ONLINE  ONLINE       ora18rac1                169.254.14.65 192.16
+                                                             8.56.41,STABLE
+ora.asm
+      1        ONLINE  ONLINE       ora18rac1                Started,STABLE
+      2        ONLINE  ONLINE       ora18rac2                Started,STABLE
+      3        OFFLINE OFFLINE                               STABLE
+ora.cvu
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.mgmtdb
+      1        ONLINE  ONLINE       ora18rac1                Open,STABLE
+ora.ora18rac1.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.ora18rac2.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.qosmserver
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.scan1.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.scan2.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.scan3.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+--------------------------------------------------------------------------------
+[grid@ora18rac2 ~:+ASM2]$
+
+
+[root@ora18rac1 ~]# crsctl check cluster -all
+**************************************************************
+ora18rac1:
+CRS-4537: Cluster Ready Services is online
+CRS-4529: Cluster Synchronization Services is online
+CRS-4533: Event Manager is online
+**************************************************************
+ora18rac2:
+CRS-4537: Cluster Ready Services is online
+CRS-4529: Cluster Synchronization Services is online
+CRS-4533: Event Manager is online
+**************************************************************
+
+[root@ora18rac1 ~]# crsctl check crs
+CRS-4638: Oracle High Availability Services is online
+CRS-4537: Cluster Ready Services is online
+CRS-4529: Cluster Synchronization Services is online
+CRS-4533: Event Manager is online
+
+[root@ora18rac1 ~]# srvctl status asm
+ASM is running on ora18rac1,ora18rac2
+
+
