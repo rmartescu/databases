@@ -1,0 +1,25 @@
+[grid@ora18rac1 ~:+ASM1]$ asmcmd --privilege sysasm
+
+ASMCMD> lsdsk -p --candidate
+Group_Num  Disk_Num      Incarn  Mount_Stat  Header_Stat  Mode_Stat  State   Path
+        0         2           0  CLOSED      PROVISIONED  ONLINE     NORMAL  /dev/oracleasm/volacfs01
+        0         0           0  CLOSED      PROVISIONED  ONLINE     NORMAL  /dev/oracleasm/voldata01
+        0         1           0  CLOSED      PROVISIONED  ONLINE     NORMAL  /dev/oracleasm/vollog01
+
+--> Using SQL command:
+CREATE DISKGROUP VOLDATA01 EXTERNAL REDUNDANCY
+  DISK '/dev/oracleasm/voldata01'
+  ATTRIBUTE 
+    'au_size'='4M',
+    'compatible.asm' = '18.0.0.0', 
+    'compatible.rdbms' = '18.0.0.0';
+
+--> Using AMSCA command    
+asmca -silent -createDiskGroup
+-diskGroupName VOLDATA01
+-disk '/dev/oracleasm/voldata01'
+-redundancy EXTERNAL
+-au_size 64
+-compatible.asm '18.0.0.0.0'
+-compatible.rdbms '18.0.0.0.0'
+
