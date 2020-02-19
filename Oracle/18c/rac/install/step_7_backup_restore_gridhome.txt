@@ -1,0 +1,117 @@
+# ----------------------------------------------------
+# How to backup a Grid Infrastructure installation
+# ----------------------------------------------------
+[as root]
+[root@ora18rac1 ~]# echo $GRID_HOME
+/u01/app/18.0.0/grid
+[root@ora18rac1 ~]# du -sh /u01/app/18.0.0/
+10G     /u01/app/18.0.0/
+
+
+[root@ora18rac1 download]# ocrconfig -manualbackup
+ora18rac2     2020/01/09 17:24:03     +VOLGIMR1:/ora18rac/OCRBACKUP/backup_20200109_172403.ocr.281.1029259443     70732493
+
+[root@ora18rac1 download]# ocrconfig -showbackup
+PROT-24: Auto backups for the Oracle Cluster Registry are not available
+
+ora18rac2     2020/01/09 17:24:03     +VOLGIMR1:/ora18rac/OCRBACKUP/backup_20200109_172403.ocr.281.1029259443     70732493
+
+[root@ora18rac2 ~]# ocrconfig -copy  +VOLGIMR1:/ora18rac/OCRBACKUP/backup_20200109_181258.ocr.282.1029262379 /download/backup_20200109_181258.ocr
+PROT-60: The Oracle Cluster Registry backup is copied to '/download/backup_20200109_181258.ocr'.
+
+# ----------------------------------------------------
+# Take the backup of Grid Infrastructure home
+# ----------------------------------------------------
+[as root]
+crsctl stop crs
+tar cpfz /download/gridhome.tgz /u01/app/18.0.0
+tar -tf /download/gridhome.tgz
+tar -tv --no-recursion -f gridhome.tgz
+
+# ----------------------------------------------------
+# Restore Grid Infrastructure home
+# rm -rf /u01/app/18.0.0/grid
+# ----------------------------------------------------
+[as root]
+[root@ora18rac1 download]# tar -tv --no-recursion -f gridhome.tgz
+drwxr-xr-x root/oinstall     0 2020-01-05 07:32 u01/app/18.0.0/
+drwxr-xr-x root/oinstall     0 2020-01-05 19:50 u01/app/18.0.0/grid/
+
+[root@ora18rac1 ~]# rm -rf /u01/app/18.0.0/grid
+[root@ora18rac1 ~]# cd /
+[root@ora18rac1 u01]# tar -xvpf /download/gridhome.tgz
+[root@ora18rac1 /]# reboot
+[root@ora18rac1 trace]# crsctl status res -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Local Resources
+--------------------------------------------------------------------------------
+ora.ASMNET1LSNR_ASM.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER.lsnr
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLDATA01.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLGIMR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLLOG01.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.VOLOCR1.dg
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.chad
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.net1.network
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+ora.ons
+               ONLINE  ONLINE       ora18rac1                STABLE
+               ONLINE  ONLINE       ora18rac2                STABLE
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.LISTENER_SCAN1.lsnr
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.LISTENER_SCAN2.lsnr
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.LISTENER_SCAN3.lsnr
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.MGMTLSNR
+      1        ONLINE  ONLINE       ora18rac2                169.254.0.145 192.16
+                                                             8.56.42,STABLE
+ora.asm
+      1        ONLINE  ONLINE       ora18rac1                Started,STABLE
+      2        ONLINE  ONLINE       ora18rac2                Started,STABLE
+      3        OFFLINE OFFLINE                               STABLE
+ora.cvu
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.mgmtdb
+      1        ONLINE  ONLINE       ora18rac2                Open,STABLE
+ora.ora18rac1.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.ora18rac2.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.qosmserver
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.scan1.vip
+      1        ONLINE  ONLINE       ora18rac1                STABLE
+ora.scan2.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.scan3.vip
+      1        ONLINE  ONLINE       ora18rac2                STABLE
+ora.vmscdb.db
+      1        ONLINE  ONLINE       ora18rac1                Open,HOME=/u01/app/o
+                                                             racle/product/18.0.0
+                                                             /db,STABLE
+      2        ONLINE  ONLINE       ora18rac2                Open,HOME=/u01/app/o
+                                                             racle/product/18.0.0
+                                                             /db,STABLE
+--------------------------------------------------------------------------------
+[root@ora18rac1 trace]#
